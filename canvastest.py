@@ -96,6 +96,21 @@ class Line(ScreenObject):
     def __contains__(self, point):
         return point in self.points
 
+def adjust(end_pos, start_pos):
+    if end_pos[1] < start_pos[1]:
+        if end_pos[0] < start_pos[0]:
+            start_pos, end_pos = end_pos, start_pos
+        else:
+            temp = end_pos
+            end_pos = end_pos[0], start_pos[1]
+            start_pos = start_pos[0], temp[1]
+    else:
+        if end_pos[0] < start_pos[0]:
+            temp = end_pos
+            end_pos = start_pos[0], end_pos[1]
+            start_pos = temp[0], start_pos[1]
+    return end_pos, start_pos
+
 
 def cls(sc):
     sc.fill(WHITE)
@@ -216,18 +231,7 @@ while True:
                 # finished moving
 
                 mousedown = False
-                if end_pos[1] < start_pos[1]:
-                    if end_pos[0] < start_pos[0]:
-                        start_pos, end_pos = end_pos, start_pos
-                    else:
-                        temp = end_pos
-                        end_pos = end_pos[0], start_pos[1]
-                        start_pos = start_pos[0], temp[1]
-                else:
-                    if end_pos[0] < start_pos[0]:
-                        temp = end_pos
-                        end_pos = start_pos[0], end_pos[1]
-                        start_pos = temp[0], start_pos[1]
+                end_pos, start_pos = adjust(end_pos, start_pos)
 
                 selection_area = pygame.Rect(start_pos, (abs(width), abs(height)))
 
