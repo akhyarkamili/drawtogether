@@ -6,7 +6,7 @@ import socket as so
 IPADDRESS = '127.0.0.1'
 PORTNUMBER = 15112
 
-class DrawingApp():
+class DrawingApp(object):
 	def __init__(self):
 		self.socket = self.StartConnection()
 		self.state = 0
@@ -61,3 +61,22 @@ class DrawingApp():
 
 	def startApp(self, logindetails):
 		pass
+##
+class User(object):
+	def __init__(self, IP, port):
+		''' 
+		Accepts an IP address and
+		a port
+		'''
+		self.address = (IP, port)
+		self.queue = []
+	def connect(self):
+		conn = so.socket(so.AF_INET, so.SOCK_STREAM)
+		conn.connect(self.address)
+	def send(self, msg):
+		self.conn.send(msg)
+	def getEventQueue(self):
+		pass
+	def clearQueue(self):
+		pass
+

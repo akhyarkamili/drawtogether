@@ -2,28 +2,93 @@ import pygame
 import math as m
 import sys
 import time
-from uuid import uuid1 as ID_GEN
+import socket as so
+import msglib as mc
 
 BLACK = (  0,   0,   0)
 WHITE = (255, 255, 255)
 GREY = (175, 175, 175)
 
+def incomingMsgHandler(self, msg):
+    myEvent = pygame.event.Event(pygame.USEREVENT+1, message=msg) # create pygame event here
+    pygame.event.post(myEvent)
+
 class CanvasWindow:
-    def __init__(self, sessionID, conn, project):
+    def __init__(self, sessionID, conn, project, userlist):
+        '''
+        Accepts a session, a connection, a project string
+        that will be converted to the canvas, and a 
+        list of user dictionaries that is in the session.
+        '''
         self.ID = sessionID
+        self.userID = userlist[0]['id']
         self.conn = conn
+        self.init_users(userlist)
+
+        self.eventHandlers = {'draw':self.drawHandler, 
+                              'select': self.selectHandler,
+                             }
+        self.tools = {'circle':self.drawCircle, 
+                      'polygon':self.drawPolygon, 
+                      'line':self.drawLine,
+                      'path':self.drawPath
+                     }
+
+        self.state = 'draw'
+
+        self.clock = pygame.time.Clock()
+        # test vars
+        self.count = 0 
+        self.pol = None
 
         pygame.init()
         self.width = 700
         self.height = 400
         self.screen = pygame.display.set_mode([self.width, self.height])
+        print 'loaded'
 
         self.createControls()
         self.load(project)
-        self.listen()
 
         self.items = []
+        self.connector = mc.connector('localhost', 12101, 'BL2')
+        mc.channel.logMessage = incomingMsgHandler
+        self.connector.connect()
+        self.listen()
+    ##
+    def init_users(self, userlist):
 
+        users = {}
+        for u in userlist:
+            users[u['id']]= {}
+            users[u['id']]['activeTool'] = 'polygon'
+        self.users = users
+    ##
+    def listen(self):
+        while True:
+            self.clock.tick(24)
+            self.screen.fill(WHITE)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                self.sendEvent(event)
+                if self.isControlEvent(event):
+                    pass
+                else:
+                    self.eventHandlers[self.state](event, self.userID)
+
+            for event in self.getEventQueues():
+                # foreign events
+                pass
+            pygame.display.flip()
+    ##
+    def sendEvent(self, e):
+        print e
+    ##
+    def isControlEvent(self, event):
+        return False
+    ##
     def load(self, project):
         # loads the image into canvas
         pass
@@ -32,8 +97,41 @@ class CanvasWindow:
         # assigns the controls to the window
         pass
 
-    def listen(self):
-        print "listening..."
+    def getEventQueues(self):
+        return ()
+
+    def save(self):
+        pass
+
+    def selectHandler(self):
+        pass
+
+    def drawHandler(self, event, source):
+        activeTool = self.users[source]['activeTool']
+        tool = self.tools[activeTool]
+
+        if activeTool in ('line', 'path'):
+            # handle lines
+            # stretch style
+            pass
+        elif activeTool =='polygon':
+            if not self.pol:
+                pass
+        else:
+            print 'such tool doesn\'t exist yet'
+    ##
+    def drawCircle(self):
+        pass
+    ##
+    def drawLine(self):
+        pass
+    ##
+    def drawPolygon(self):
+        pass
+    ##
+    def drawPath(self):
+        pass
+
 
 class ScreenObject(object):
     def __init__(self):
@@ -135,7 +233,7 @@ class Line(ScreenObject):
     def __contains__(self, point):
         return point in self.points
 
-class Shape():
+class Shape(object):
     def __init__(self, topleft, fillcolor, bordercolor, borderwidth):
         pass
     def getRect(self):
@@ -164,27 +262,27 @@ class Polygon(Shape):
         for _ in range(n):
             edge = Line((0,0), (0,0), bordercolor)
             self.edges.append(edge)
-        center = self.getCenter()
-        self.computeEdges(*center)
+
+        self.computeEdges()
 
     def resize(self, start, end):
         # drag and drop resize
         end, start = adjust(end, start)
-        x, y = (end[0] - start[0])/2, (end[1] - start[1])/2 
-        self.updateEdges(x, y)
-        self.draw()
+        self.topleft = start
+        self.radius = (end[0] - start[0])/2 # (end[0] - start[0])/2, (end[1] - start[1])/2 
+        self.computeEdges()
 
     def getCenter(self):
         rad = self.radius
         tl = self.topleft
         return (tl[0] + rad, tl[1]+rad)
-
-    def computeEdges(self, x, y):
+    ##
+    def computeEdges(self):
         # find the location of vertices based on center point x, y
         r = self.radius
         n = self.n
         edges = self.edges
-        center = self.getCenter()
+        x, y = self.getCenter()
 
         angle = 0
         offset = 2*m.pi/n
@@ -200,9 +298,12 @@ class Polygon(Shape):
             ex = x + int(r*m.cos(angle))
 
             edge.change((sx, sy),(ex, ey))
-
-        print ""
-
+    ##
+    def displace(self, dx, dy):
+        self.topleft[0] += dx
+        self.topleft[1] += dy
+        self.computeEdges()
+    ##
     def draw(self, sc):
         for edge in self.edges:
             edge.draw(sc)
@@ -224,19 +325,9 @@ def adjust(end_pos, start_pos):
     return end_pos, start_pos
 
 if __name__ == '__main__':
-    conn = None
+    conn = so.socket(so.AF_INET, so.SOCK_STREAM)
+    conn.connect(('127.0.0.1', 15112))
+
     sessionID = '000'
-    window = CanvasWindow(sessionID, conn, None)
-    while True:
-        window.screen.fill(WHITE)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-        pol = Polygon((250, 100), 50, 9)
-        pol.draw(window.screen) 
-        for i in range(3):
-            for j in range(3):
-                window.screen.set_at((300+i, 150+j), BLACK)
-        time.sleep(0.5)
-        pygame.display.flip()
+    window = CanvasWindow(sessionID, conn, None, [{'id':'akhyarkamili'}])
+
