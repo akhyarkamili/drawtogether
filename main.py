@@ -1,6 +1,4 @@
-import pygame
-import math
-from uuid import uuid1 as ID_GEN
+import pickle
 import socket as so
 
 IPADDRESS = '127.0.0.1'
@@ -9,17 +7,14 @@ PORTNUMBER = 15112
 class DrawingApp(object):
 	def __init__(self):
 		self.socket = self.StartConnection()
-		self.state = 0
 		username, password = self.getLogin()
-		self.uname = username
 
 		while not self.authenticate (socket, username, password):
 			username, password = self.getLogin(True)
 
 	def StartConnection (self):
-	    connection = so.socket(so.AF_INET, so.SOCK_STREAM)
-	    connection.connect((IPADDRESS, PORTNUMBER))
-
+		conn = so.socket(so.AF_INET, so.SOCK_STREAM)
+		conn.connect((IPADDRESS, PORTNUMBER))
 	    return connection
 
 	def getLogin(failed=False):
@@ -56,27 +51,5 @@ class DrawingApp(object):
 	    return uname.get(), pwd.get()
 
 	def authenticate(self, socket, uname, pwd):
-		pass
-
-
-	def startApp(self, logindetails):
-		pass
-##
-class User(object):
-	def __init__(self, IP, port):
-		''' 
-		Accepts an IP address and
-		a port
-		'''
-		self.address = (IP, port)
-		self.queue = []
-	def connect(self):
-		conn = so.socket(so.AF_INET, so.SOCK_STREAM)
-		conn.connect(self.address)
-	def send(self, msg):
-		self.conn.send(msg)
-	def getEventQueue(self):
-		pass
-	def clearQueue(self):
-		pass
+		
 

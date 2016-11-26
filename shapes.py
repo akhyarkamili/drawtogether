@@ -1,6 +1,7 @@
 from helper import *
 from uuid import uuid1 as ID_GEN
 import math as m
+import pickle
 
 BLACK = (  0,   0,   0)
 WHITE = (255, 255, 255)
@@ -11,7 +12,7 @@ class CanvasObject(object):
         self.id = ID_GEN()
 ##
 class Line(CanvasObject):
-    def __init__(self, start, end, color):
+    def __init__(self, start, end, color, sColor=GREY):
         super(Line, self).__init__()
         self.start = start
         self.end = end
@@ -19,10 +20,8 @@ class Line(CanvasObject):
 
         # when a line is created,
         # it should be in a selected state 
-        self.activeColor = GREY
+        self.activeColor = sColor
         self.selected = True
-
-        self.setColor(self.activeColor)
         
         self.computePoints()
 
@@ -33,7 +32,8 @@ class Line(CanvasObject):
         self.computePoints()
     ##
     def setColor(self, color):
-        self.activeColor = color
+        # changes permanent color
+        self.color = color
     ##
     def getColor(self):
         return self.activeColor
@@ -41,13 +41,14 @@ class Line(CanvasObject):
     def getEndPoints(self):
         return self.start, self.end
     ##
-    def toggleSelected(self):
-        if not self.selected:
-            # temporarily turn to grey 
-            # until selected = False
-            self.activeColor = GREY
-        else:
+    def toggleSelected(self, sColor):
+        if self.selected:
+            # release the select
             self.activeColor = self.color
+        else:
+            # temporarily turn to selected color 
+            # until selected = False
+            self.activeColor = sColor
         # toggle selected
         self.selected = not self.selected
     ##
@@ -121,6 +122,58 @@ class Line(CanvasObject):
     def __contains__(self, point):
         return point in self.points
     ##
+    def dump(self):
+        d = {}
+
+        d['start'] = self.start
+        d['end'] = self.end
+        d['color'] = self.color
+
+        return 'LINE'.ljust(10) + pickle.dumps(d)
+
+##
+
+class Path(CanvasObject):
+    def __init__(self, start, color, sColor=GREY):
+        self.points = [start]
+        self.selected = True
+        self.selectedColor = sColor
+        self.color = color
+
+        self.activeColor = sColor
+    def toggleSelected(self, sColor):
+        if self.selected:
+            # unselect
+            self.activeColor = self.color
+            self.selected = False
+        else:
+            self.activeColor = sColor
+            self.selected = True
+
+    def add(self, point):
+        self.points.append(point)
+
+    def displace(self, dx, dy):
+        for i in range(len(self.points)):
+            self.points[i] = self.points[i][0] + dx, self.points[i][1] + dy 
+
+    def inbound(self, rect):
+        return all(rect.collidepoint(p) for p in self.points)
+
+    def draw(self, sc):
+        for p in self.points:
+            for i in range(3):
+                point = (p[0]-1) + i, (p[1]-1) + i
+                sc.set_at(point, self.activeColor)
+
+    def __contains__(self, p):
+        return p in self.points
+
+    def dump(self):
+        d = {}
+        d['points'] = self.points
+        d['color'] = self.color
+        return 'PATH'.ljust(10) + pickle.dumps(d)
 ##
 
 class Shape(CanvasObject):
@@ -139,7 +192,7 @@ class Circle(Shape):
 ##
 
 class Polygon(Shape):
-    def __init__(self, topleft, radius, n, fillcolor=WHITE, bordercolor=BLACK, borderwidth=1):
+    def __init__(self, topleft, radius, n, sColor=GREY, fillcolor=WHITE, bordercolor=BLACK, borderwidth=1):
         self.n = n
         self.topleft = topleft
         self.radius = radius
@@ -148,12 +201,15 @@ class Polygon(Shape):
         self.rotation = 0
 
         self.borderwidth = borderwidth
+        # permanent color
         self.bordercolor = bordercolor
         self.selected = True
+        # temporary color
+        self.activeBorderColor = sColor
 
         self.edges = [] # Fill with line objects
         for _ in range(n):
-            edge = Line((0,0), (0,0), bordercolor)
+            edge = Line((0,0), (0,0), self.bordercolor, self.activeBorderColor)
             self.edges.append(edge)
 
         self.computeEdges()
@@ -213,21 +269,27 @@ class Polygon(Shape):
         and checks whether this object
         is contained within the rectangle
         '''
-        print 'checking..'
         outbound = False
         for e in self.edges:
             s, e = e.getEndPoints()
             if not (rect.collidepoint(s) or rect.collidepoint(e)):
-                print 'edge: ', s, e
                 outbound = True
-        print outbound
         return not outbound
-
-    def toggleSelected(self):
-        self.selected = not self.selected
-        for e in self.edges:
-            e.toggleSelected()
     ##
+    def toggleSelected(self, sColor):
+        if self.selected:
+            self.activeBorderColor = self.bordercolor
+        else:
+            self.activeBorderColor = sColor
+        # toggle line selection
+        for e in self.edges:
+            e.toggleSelected(self.activeBorderColor)
+        self.selected = not self.selected
+    ##
+    def setColor(self, color):
+        for edge in self.edges:
+            edge.color = color
+            edge.setColor(color)
     def __contains__(self, p):
         ''' 
         Check if a point lies inside a polygon.
@@ -254,4 +316,16 @@ class Polygon(Shape):
     def draw(self, sc):
         for edge in self.edges:
             edge.draw(sc)
+    ##
+    def save(self):
+        d = {}
+        d['topleft'] = self.topleft
+        d['radius'] = self.radius
+        d['n'] = self.n
+        d['fillcolor'] = self.fillcolor
+        d['bordercolor'] = self.bordercolor
+        d['borderwidth'] = self.borderwidth
+
+        return 'POLYGON'.ljust(10) + pickle.dumps(d)
+
 ##

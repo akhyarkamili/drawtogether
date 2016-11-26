@@ -4,16 +4,16 @@ import os
 import sys
 import msglib
 import threading
+import pickle
 
-class MyChannel(msglib.channel):
+class WatchChannel(msglib.channel):
     def logMessage(self, msg): # override standard method
+        '''
+        Process messages from the client
+        '''
+    def broadcast(self, msg):
         for channel in self.owner.channels:
             channel.send(msg)
-        print 'Channels available: %d' % len(self.owner.channels)
-        pass # note: use self.owner to access listener object
-        pass # note: use self.owner.channels to access all channels
-        pass # because of multi-thread environment, make sure that access to channels array are guarded against race condition !
-        pass # use threading.Lock objects for this purpose
 
 class CustomListener(msglib.listener):
     def createChannel(self, parameters): # override standard method

@@ -26,3 +26,4 @@ def adjust(end_pos, start_pos):
 
 def listPush(l, obj):
     l = [obj] + l
+    return l
