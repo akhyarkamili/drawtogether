@@ -122,20 +122,20 @@ class Line(CanvasObject):
     def __contains__(self, point):
         return point in self.points
     ##
-    def dump(self):
+    def save(self):
         d = {}
 
         d['start'] = self.start
         d['end'] = self.end
         d['color'] = self.color
 
-        return 'LINE'.ljust(10) + pickle.dumps(d)
+        return 'LINE'.ljust(20) + pickle.dumps(d)
 
 ##
 
 class Path(CanvasObject):
-    def __init__(self, start, color, sColor=GREY):
-        self.points = [start]
+    def __init__(self, start, color, sColor=GREY, points=[]):
+        self.points = [start] + points
         self.selected = True
         self.selectedColor = sColor
         self.color = color
@@ -169,11 +169,11 @@ class Path(CanvasObject):
     def __contains__(self, p):
         return p in self.points
 
-    def dump(self):
+    def save(self):
         d = {}
         d['points'] = self.points
         d['color'] = self.color
-        return 'PATH'.ljust(10) + pickle.dumps(d)
+        return 'PATH'.ljust(20) + pickle.dumps(d)
 ##
 
 class Shape(CanvasObject):
@@ -326,6 +326,6 @@ class Polygon(Shape):
         d['bordercolor'] = self.bordercolor
         d['borderwidth'] = self.borderwidth
 
-        return 'POLYGON'.ljust(10) + pickle.dumps(d)
+        return 'POLYGON'.ljust(20) + pickle.dumps(d)
 
 ##

@@ -1,70 +1,86 @@
 import pickle
 import socket as so
+import msglib as mc
+import window
+import Tkinter
 
 IPADDRESS = '127.0.0.1'
 PORTNUMBER = 15112
 
+app = None
+
+def authMessageHandler(self, msg):
+    print 'rcvd:', msg
+    if app:
+        app.check(msg)
+
 class DrawingApp(object):
-	def __init__(self):
-		self.socket = self.StartConnection()
-		username, password = self.getLogin()
+    def __init__(self):
+        self.conn = self.startConnection()
+        self.username, password = self.getLogin()
+        self.login = False
+        self.authenticate(self.username, password)
 
-		while not self.authenticate (socket, username, password):
-			username, password = self.getLogin(True)
+    def startConnection(self):
+        # conn = so.socket(so.AF_INET, so.SOCK_STREAM)
+        # conn.connect((IPADDRESS, PORTNUMBER))
 
-		self.startApp()
+        conn = mc.connector('localhost', 15112, 'BL2')
+        mc.channel.logMessage = authMessageHandler
+        conn.connect()
+        return conn
 
-	def StartConnection (self):
-		conn = so.socket(so.AF_INET, so.SOCK_STREAM)
-		conn.connect((IPADDRESS, PORTNUMBER))
-	    return connection
+    def getLogin(self, failed=False):
+        wnd = Tkinter.Tk()
+        wnd.geometry("250x200")
+        wnd.title("Welcome to DrawTogether! Login")
+        if failed:
+            wnd.title("Wrong username/password")
+        # control variables
+        uname = Tkinter.StringVar()
+        pwd = Tkinter.StringVar()
 
-	def getLogin(failed=False):
-	    wnd = Tkinter.Tk()
-	    wnd.geometry("250x200")
-	    wnd.title("Welcome to DrawTogether! Login")
-	    if failed:
-	        wnd.title("Wrong username/password")
+        # graphical elements
+        ulabel = Tkinter.Label(wnd, text="username")
+        plabel = Tkinter.Label(wnd, text="password")
+        uentry = Tkinter.Entry(wnd, textvariable=uname)
+        pentry = Tkinter.Entry(wnd, show='*', textvariable=pwd)
+        sbutton = Tkinter.Button(wnd, text="Login", command=wnd.destroy)
+
+        # pack the elements
+        ulabel.pack()
+        uentry.pack()
+        plabel.pack()
+        pentry.pack()
+        sbutton.pack()  
+
+        wnd.mainloop()
+
+        return uname.get(), pwd.get()
+
+    def authenticate(self, uname, pwd):
+        user = (uname, pwd)
+        d = pickle.dumps(user)
+        msg = 'AUTH'.ljust(20) + d
+        self.conn.send(msg)
 
 
-	    # control variables
-	    uname = Tkinter.StringVar()
-	    pwd = Tkinter.StringVar()
+    def check(self, resp):
+        if resp[:20].strip() == 'SUCCESS':
+            self.conn.disconnect()
+            self.login = True
+            self.startApp()
+        else:
+            quit()
 
-	    # graphical elements
-	    ulabel = Tkinter.Label(wnd, text="username")
-	    plabel = Tkinter.Label(wnd, text="password")
-	    uentry = Tkinter.Entry(wnd, textvariable=uname)
-	    pentry = Tkinter.Entry(wnd, show='*', textvariable=pwd)
-	    sbutton = Tkinter.Button(wnd, text="Login", command=wnd.destroy)
+    def startApp(self):        
+        userdict = {}
+        userdict['owner'] = self.username
+        userdict['users'] = [{'id':'saquibr'}, {'id':'akhyarkamili'}]
+        self.canvas = window.CanvasWindow(userdict)
 
-	    # pack the elements
-	    ulabel.pack()
-	    uentry.pack()
-	    plabel.pack()
-	    pentry.pack()
-	    sbutton.pack()	
 
-	    # bind pull event
-	    mw.after(5000, callback=self.update)
+if __name__ == '__main__':
+    app = DrawingApp()
 
-	    wnd.mainloop()
-
-	    return uname.get(), pwd.get()
-
-	def authenticate(self, socket, uname, pwd):
-		user = {uname:pwd}
-		d = pickle.dumps(user)
-		msg = 'AUTH'.ljust(20) + d
-		socket.send(msg)
-
-		resp = socket.recv(20).strip()
-
-		if resp == 'SUCCESS':
-			return True
-		else:
-			return False
-	def startApp(self):
-		project = socket.recv(8192)
-		for i in 
 

@@ -37,15 +37,20 @@ def incomingMsgHandler(self, msg):
     pygame.event.post(myEvent)
 
 class CanvasWindow:
-    def __init__(self, conn, project, userlist):
+    def __init__(self, userdict):
         '''
         Accepts a session, a connection, a project string
         that will be converted to the canvas, and a 
         list of user dictionaries that is in the session.
         '''
-        self.userID = userlist[0]['id']
-        self.conn = conn
-        self.userdict = self.initializeUsers(userlist)
+        # connector to server
+        self.connector = mc.connector('localhost', 15112, 'BL2')
+        mc.channel.logMessage = incomingMsgHandler
+        self.connector.connect()
+        self.bg = WHITE
+
+        self.userID = userdict['owner']
+        self.userdict = self.initializeUsers(userdict['users'])
 
         self.drawTools = {'circle':tools.drawCircle, 
                           'polygon':tools.drawPolygon, 
@@ -65,18 +70,8 @@ class CanvasWindow:
         self.width = 700
         self.height = 400
         self.screen = pygame.display.set_mode([self.width, self.height])
-        self.createControls()
 
-        # project-related
-        self.name = ''
-        self.background = ''
-        self.load(project)
-
-        # connector to server
-        self.connector = conn
-        mc.channel.logMessage = incomingMsgHandler
-        self.connector.connect()
-
+        self.requestProject()
         self.listen()
     ##
     def listen(self):
@@ -166,13 +161,19 @@ class CanvasWindow:
                         user = self.userdict[source]
                         for key in msg:
                             user[key] = msg[key]
-                    elif head == 'RQ_UPDATE':
+                    elif head == 'BC_UPDATE':
+                        print 'got a request!'
                         # updates all others based on the canvas
                         d = 'RESP_UPDATE'.ljust(20) + self.save()
                         self.connector.send(d)
                     elif head == 'RESP_UPDATE':
                         # received an update
-                        self.load(event.message[20:])
+                        if event.message[-4:] == 'NONE':
+                            # no existing canvas
+                            pass
+                        else:
+                            # there is an existing canvas
+                            self.load(event.message)
 
 
             # trigger drag
@@ -253,9 +254,10 @@ class CanvasWindow:
         mainmsg = {'body':msg, 'source':self.userID}
         d = 'STATE_UPDATE'.ljust(20) + pickle.dumps(mainmsg)
         self.connector.send(d)
-
-
     ##
+    def requestProject(self):
+        self.connector.send('RQ_UPDATE'.ljust(20))
+        print 'request sent!'
     def toolHandler(self, event):
         user = self.userdict[event.source]
 
@@ -406,27 +408,29 @@ class CanvasWindow:
     def save(self):
         itemDump = []
         for obj in self.screenItems:
-            itemDump.append(obj.dump())
+            itemDump.append(obj.save())
         return pickle.dumps(itemDump)
     ##
     def load(self, project):
-        types = {'LINE': shape.Line,
-                 'POLYGON': shape.Polygon,
-                 'PATH': shape.Path
+        types = {'LINE': shapes.Line,
+                 'POLYGON': shapes.Polygon,
+                 'PATH': shapes.Path
                 }
+        print "project:", project
         self.screenItems = []
-        dumps = pickle.loads(project)
-        for d in dumps:
-            obj_type = types[d[:20].strip()]
-            keyargs = pickle.loads(d[20:])
-            self.screenItems.append(obj_type(**keyargs))
+        if project[20:]:
+            dumps = pickle.loads(project[20:])
+            for d in dumps:
+                obj_type = types[d[:20].strip()]
+                keyargs = pickle.loads(d[20:])
+                self.screenItems.append(obj_type(**keyargs))
     ##
 
 
-if __name__ == '__main__':
-    conn = mc.connector('localhost', 15112, 'BL2')
-    userlist = []
-    for ID in sys.argv[1:]:
-        userlist.append({'id':ID})
-    window = CanvasWindow(conn, None, userlist)
+# if __name__ == '__main__':
+#     conn = mc.connector('localhost', 15112, 'BL2')
+#     userlist = []
+#     for ID in sys.argv[1:]:
+#         userlist.append({'id':ID})
+#     window = CanvasWindow()
 

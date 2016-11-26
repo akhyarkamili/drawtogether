@@ -24,33 +24,39 @@ class ClientChannel(msglib.channel):
             self.broadcast(msg)
         elif header == 'AUTH':
             self.authenticate(msg)
+        elif header == 'RQ_UPDATE':
+            self.requestUpdate()
 
     def broadcast(self, msg):
         for channel in self.owner.channels:
             channel.send(msg)
-    def authenticate(self, msg):
-        with open('users.data', 'r') as filedata:
-            users = pickle.loads(filedata)
-        content = pickle.loads(msg[20:])
-        source = content['source']
 
-        success = content['body']['password'] == users[source]['password']
+    def authenticate(self, msg):
+        global PROJECT_OPENED
+
+        with open('users.data', 'r') as filedata:
+            users = pickle.load(filedata)
+        content = pickle.loads(msg[20:]) # tuple of uname, pwd
+
+        print users, content
+
+        success = content[1] == users[content[0]]
 
         if success:
             # authentication successful
             self.send('SUCCESS'.ljust(20))
-            if not PROJECT_OPENED:
-                PROJECT_OPENED = True
-            else:
-                # project is already open
-                existing = self.owner.channels[0]
-                # request for latest version broadcast
-                self.requestUpdate(existing)
         else:
             self.send('FAIL'.ljust(20))
 
-    def requestUpdate(self, ch):
-        ch.send('RQ_UPDATE'.ljust(20))
+    def requestUpdate(self):
+        print 'processing the request!'
+        if len(self.owner.channels) == 1:
+            print 'only one channel'
+            self.send('RQ_UPDATE'.ljust(20)+"NONE")
+        else:
+            print 'more channels available'
+            self.owner.channels[0].send('BC_UPDATE'.ljust(20))
+
 
 class CustomListener(msglib.listener):
     def createChannel(self, parameters): # override standard method
@@ -58,7 +64,7 @@ class CustomListener(msglib.listener):
         remoteAddr = parameters['remoteAddress']
         channel_id = parameters['channelID']
         otherSettings = parameters['otherSettings']
-        aChannel = MyChannel(soConn, remoteAddr, channel_id, otherSettings) # refer to MyChannel class instead of msglib.channel standard class
+        aChannel = ClientChannel(soConn, remoteAddr, channel_id, otherSettings) # refer to MyChannel class instead of msglib.channel standard class
         return aChannel;
 
 def main():
