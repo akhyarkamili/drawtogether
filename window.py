@@ -1,16 +1,19 @@
 import pygame
-import math as m
 import sys
-import time
 import socket as so
 import msglib as mc
+import helper
+import tools
+import shapes
+import pickle
 
 BLACK = (  0,   0,   0)
 WHITE = (255, 255, 255)
-GREY = (175, 175, 175)
+GREY  = (175, 175, 175)
+RED   = pygame.Color(255, 0, 0)
 
 def incomingMsgHandler(self, msg):
-    myEvent = pygame.event.Event(pygame.USEREVENT+1, message=msg) # create pygame event here
+    myEvent = pygame.event.Event(pygame.USEREVENT+4, message=msg) # create pygame event here
     pygame.event.post(myEvent)
 
 class CanvasWindow:
@@ -20,314 +23,287 @@ class CanvasWindow:
         that will be converted to the canvas, and a 
         list of user dictionaries that is in the session.
         '''
-        self.ID = sessionID
+        self.sessionID = sessionID
         self.userID = userlist[0]['id']
         self.conn = conn
-        self.init_users(userlist)
+        self.userlist = userlist
 
         self.eventHandlers = {'draw':self.drawHandler, 
                               'select': self.selectHandler,
                              }
-        self.tools = {'circle':self.drawCircle, 
-                      'polygon':self.drawPolygon, 
-                      'line':self.drawLine,
-                      'path':self.drawPath
-                     }
+        self.drawTools = {'circle':tools.drawCircle, 
+                          'polygon':tools.drawPolygon, 
+                          'line':tools.drawLine,
+                          'path':tools.drawPath
+                         }
+        self.selectTools = {'fill': tools.fill,
+                            'transform': tools.transform,
+                           }
 
         self.state = 'draw'
+        self.activeTool = 'polygon'
+        self.screenItems = []
+        self.selection = []
 
         self.clock = pygame.time.Clock()
-        # test vars
-        self.count = 0 
-        self.pol = None
 
         pygame.init()
         self.width = 700
         self.height = 400
         self.screen = pygame.display.set_mode([self.width, self.height])
-        print 'loaded'
-
         self.createControls()
+
+        # project-related
+        self.name = ''
+        self.background = ''
         self.load(project)
 
-        self.items = []
-        self.connector = mc.connector('localhost', 12101, 'BL2')
+        self.bordercolor = BLACK
+        self.borderwidth = 1
+        self.fillcolor = WHITE
+
+        # connector to server
+        self.connector = conn
         mc.channel.logMessage = incomingMsgHandler
         self.connector.connect()
+
+
+        # test vars
+        self.count = 0 
+        pol = shapes.Polygon([100, 100], 25, 3)
+        self.screenItems.append(pol)
+        self.selection.append(pol)
+
         self.listen()
     ##
-    def init_users(self, userlist):
-
-        users = {}
-        for u in userlist:
-            users[u['id']]= {}
-            users[u['id']]['activeTool'] = 'polygon'
-        self.users = users
-    ##
     def listen(self):
+        '''
+        Listens to all kind of events and react accordingly
+        '''
+        # define events
+        events = {'click':pygame.USEREVENT+1,
+                'drag':pygame.USEREVENT+2,
+                'drop':pygame.USEREVENT+3
+            }
+        server = pygame.USEREVENT+4
+
+        mousedown = False
+        mousedrag = False
+        clock = pygame.time.Clock()
+
+        self.selectionRect = pygame.Rect((0,0), (0,0))
+        self.tempObj = None
+        self.polygonSides = 4
+        # Reactor loop
         while True:
-            self.clock.tick(24)
+            self.clock.tick(30)
             self.screen.fill(WHITE)
+            self.drawScreen() 
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    self.connector.disconnect()
                     pygame.quit()
                     sys.exit()
-                self.sendEvent(event)
-                if self.isControlEvent(event):
-                    pass
-                else:
-                    self.eventHandlers[self.state](event, self.userID)
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    self.sendEvent(event)
+                    press_pos = pygame.mouse.get_pos()
+                    mousedown = True
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    self.sendEvent(event)
+                    mousedown = False
+                    if not mousedrag:
+                        # mouse was clicked
+                        e = pygame.event.Event(events['click'], type='click', pos=pos, source=self.userID)
+                        pygame.event.post(e)
+                    else:
+                        # mouse is dropped from drag
+                        e = pygame.event.Event(events['drop'], type='drop', pos=pos, 
+                                    origin=press_pos, rel=relative, source=self.userID)
+                        pygame.event.post(e)
+                        mousedrag = False
+                elif event.type == events['click']:
+                    self.sendEvent(event)
+                    self.clickHandler(event, event.source)
+                    mousedown = False
+                elif event.type == events['drag']:
+                    mousedrag = True
+                    self.sendEvent(event)
+                    self.dragHandler(event, event.source)
+                elif event.type == events['drop']:
+                    self.sendEvent(event)
+                    self.dropHandler(event, event.source)
+                elif event.type == pygame.KEYUP:
+                    print event.key
+                    if event.key == 108:
+                        self.state = 'draw'
+                        self.activeTool = 'line'
+                    elif event.key == 112:
+                        self.state = 'draw'
+                        self.activeTool = 'polygon'
+                    elif event.key == 115:
+                        self.state = 'select'
+                        self.activeTool = 'move'
+                    elif event.key in range(49, 58):
+                        self.polygonSides = event.key - 48 
+                    elif event.key == 99:
+                        self.state = 'draw'
+                        self.activeTool = 'circle'
 
-            for event in self.getEventQueues():
-                # foreign events
-                pass
+                elif event.type == server:
+                    # msg is a dictionary
+                    msg = pickle.loads(event.message)
+                    e = pygame.event.Event(events[msg['type']], source=msg['source'], **msg['event'])
+                    pygame.event.post(e)
+
+            # trigger drag
+            if mousedown:
+                pos = pygame.mouse.get_pos()
+                if not helper.isNear(pos, press_pos):
+                    # mouse is still down, 
+                    # but has moved considerably
+                    relative = (pos[0]-last_pos[0],pos[1]-last_pos[1])
+                    e = pygame.event.Event(events['drag'], type='drag', pos=pos, 
+                                origin=press_pos, rel=relative, source=self.userID)
+                    pygame.event.post(e)
+                last_pos = pos
+
+            if mousedrag:
+                pygame.draw.rect(self.screen, RED, self.selectionRect, 1)
+
             pygame.display.flip()
     ##
-    def sendEvent(self, e):
-        print e
+    def drawScreen(self):
+        self.screen.fill(self.bg)
+        for obj in self.screenItems:
+            obj.draw(self.screen)
     ##
-    def isControlEvent(self, event):
-        return False
+    def sendEvent(self, e):
+        ''' construct event message
+            A dictionary object containing:
+            type: click, drag, drop
+
+
+        '''
+        msg = {}
+
+        msg['type'] = e.type
+        msg['event'] = {}
+        for k, v in e.__dict__.items():
+            msg['event'][k] = v
+        msg['source'] = self.userID
+
+        d = pickle.dumps(msg)
+        self.connector.send(d)
+    ##
+    def clickHandler(self, event):
+        state = self.state
+        selection = self.selection
+        screenItems = self.screenItems 
+
+        pos = event.pos
+        outside = True # measure the amount of change occured
+        # check if any of the object is clicked
+        for obj in screenItems:
+            if obj not in selection:
+                if pos in obj:
+                    # the click is in a ScreenObject
+                    self.clearSelection()                    
+                    outside = False
+                    if state == 'select':
+                        obj.toggleSelected()
+                        if not obj in selection:
+                                self.selection.append(obj)
+                    break
+            else:
+                if pos in obj:
+                    outside = False
+        if outside: 
+            # clicked outside of any obje
+            self.clearSelection()
+    ##
+    def dragHandler(self, event):
+        state = self.state
+        selection = self.selection
+        activeTool = self.activeTool
+
+        if state == 'select':
+            if selection:
+                # selection is not empty
+                # dragging means moving
+                if activeTool == 'move':
+                    for obj in selection:
+                        obj.displace(*event.rel)
+            else:
+                # selection is empty 
+                # do area selection
+                self.selectionRect = self.createSelectionArea(event.origin, event.pos)
+        elif state == 'draw':
+            start, end = event.origin, event.pos
+            if not self.tempObj:
+                self.tempObj = self.drawTools[activeTool](start, end, 
+                                    self.fillcolor, self.bordercolor, self.borderwidth, n=self.polygonSides)
+            else:
+                # adjust the object to follow mouse handler
+                self.drawTools[activeTool](start, end, self.fillcolor, 
+                                      self.bordercolor, self.borderwidth, self.tempObj, n=self.polygonSides)
+            self.tempObj.draw(self.screen)
+    ##
+    def dropHandler(self, event):
+        state = self.state
+        if state == 'select':
+            area = self.selectionRect
+            tools.selectArea(self.screenItems, area, self.selection)
+
+            # capture selection, remove rectangle
+            mousedrag = False
+            self.selectionRect = pygame.Rect((0,0), (0,0))
+        elif state == 'draw':
+            self.clearSelection()
+            self.screenItems.append(self.tempObj)
+            self.selection.append(self.tempObj)
+            self.tempObj = None
+
+    def createSelectionArea(self, start_pos, end_pos):
+        end_pos, start_pos = helper.adjust(end_pos, start_pos)
+        width = end_pos[0] - start_pos[0]
+        height = end_pos[1] - start_pos[1]
+        screen = self.screen
+
+        rect = pygame.Rect(start_pos, (width, height))
+
+        # manually create lines
+        # pygame.draw.line(screen, BLACK, start_pos, (start_pos[0], start_pos[1]+height))
+        # pygame.draw.line(screen, BLACK, start_pos, (start_pos[0]+width, start_pos[1]))
+        # pygame.draw.line(screen, BLACK, (start_pos[0]+width, start_pos[1]), 
+        #                                 (start_pos[0]+width, start_pos[1]+height))
+        # pygame.draw.line(screen, BLACK, (start_pos[0], start_pos[1]+height), 
+        #                                 (start_pos[0]+width, start_pos[1]+height))
+
+        return rect
+    ##
+    def clearSelection(self):           
+        # clearing
+        for obj in self.selection:
+            obj.selected = True
+            obj.toggleSelected()
+
+        self.selection = []
     ##
     def load(self, project):
         # loads the image into canvas
-        pass
-
+        self.bg = WHITE
+    ##
     def createControls(self):
         # assigns the controls to the window
         pass
-
-    def getEventQueues(self):
-        return ()
-
+    ##
     def save(self):
         pass
 
-    def selectHandler(self):
-        pass
-
-    def drawHandler(self, event, source):
-        activeTool = self.users[source]['activeTool']
-        tool = self.tools[activeTool]
-
-        if activeTool in ('line', 'path'):
-            # handle lines
-            # stretch style
-            pass
-        elif activeTool =='polygon':
-            if not self.pol:
-                pass
-        else:
-            print 'such tool doesn\'t exist yet'
-    ##
-    def drawCircle(self):
-        pass
-    ##
-    def drawLine(self):
-        pass
-    ##
-    def drawPolygon(self):
-        pass
-    ##
-    def drawPath(self):
-        pass
-
-
-class ScreenObject(object):
-    def __init__(self):
-        self.id = ID_GEN()
-
-
-class Line(ScreenObject):
-    def __init__(self, start, end, color):
-        super(Line, self).__init__()
-        self.start = start
-        self.end = end
-        self.color = color
-
-        self.setColor(self.color)
-        
-        self.computePoints()
-
-    def displace(self, disp_x, disp_y):
-        self.start = self.start[0] + disp_x, self.start[1] + disp_y
-        self.end = self.end[0] + disp_x, self.end[1] + disp_y
-
-        self.computePoints()
-
-    def setColor(self,color):
-        self.activeColor = color
-
-    def getColor(self):
-        return self.activeColor
-
-    def setSelected(self, selected):
-        if selected:
-            self.activeColor = GREY
-        else:
-            self.activeColor = self.color
-    def change(self, start, end):
-        self.end, self.start = end, start
-        self.computePoints()
-
-    def computePoints(self):
-        self.points = []
-        x0, y0 = self.start
-        x1, y1 = self.end
-
-        # BRESENHAM'S LINE ALGORITHM
-        # CODE BY BRIAN WILL
-
-        rise = y1-y0
-        run = x1-x0
-
-        if not run:
-            # vertical line
-            if y1 < y0:
-                y1, y0 = y0, y1
-            for y in range(y0, y1):
-                self.points.append((x0, y))
-        else:
-            m = float(rise)/run
-            adjust = 1 if m >=0 else -1
-            offset = 0
-            threshold = abs(run)
-            thresholdInc = abs(run) * 2
-            if abs(m) < 1:
-                y = y0
-                if x1 < x0:
-                    # swap
-                    x1, x0 = x0, x1
-                    y = y1
-                for x in range(x0, x1+1):
-                    self.points.append((x, y))
-                    offset += abs(rise) * 2
-
-                    if offset >= threshold:
-                        y += adjust
-                        threshold += thresholdInc
-            else:
-                x = x0
-                threshold = abs(rise)
-                thresholdInc = abs(rise) * 2
-                if y1 < y0:
-                    # swap
-                    y1, y0 = y0, y1
-                    x = x1
-
-                for y in range(y0, y1+1):
-                    self.points.append((x, y))
-                    offset += abs(run)*2
-                    if offset >= threshold:
-                        x += adjust
-                        threshold += thresholdInc
-
-    def draw(self, sc):
-        for p in self.points:
-            sc.set_at(p, self.activeColor)
-
-    def __eq__(self, other):
-        if isinstance(other, Line):
-            return other.start == self.start and other.end == self.end
-
-    def __contains__(self, point):
-        return point in self.points
-
-class Shape(object):
-    def __init__(self, topleft, fillcolor, bordercolor, borderwidth):
-        pass
-    def getRect(self):
-        return self.rect
-
-class Circle(Shape):
-    def __init__(self, topleft, radius):
-        pass
-    def draw(self, canvas):
-        center = topleft[0]+self.radius/2, topleft[1]+self.radius/2
-        self.image = pygame.draw.circle(surface, self.color, center, self.radius, self.borderwidth)
-
-class Polygon(Shape):
-    def __init__(self, topleft, radius, n, fillcolor=WHITE, bordercolor=BLACK, borderwidth=1):
-        self.n = n
-        self.topleft = topleft
-        self.radius = radius
-        self.image = None
-        self.fillcolor = fillcolor
-        self.rotation = 0
-
-        self.borderwidth = borderwidth
-        self.bordercolor = bordercolor
-
-        self.edges = [] # Fill with line objects
-        for _ in range(n):
-            edge = Line((0,0), (0,0), bordercolor)
-            self.edges.append(edge)
-
-        self.computeEdges()
-
-    def resize(self, start, end):
-        # drag and drop resize
-        end, start = adjust(end, start)
-        self.topleft = start
-        self.radius = (end[0] - start[0])/2 # (end[0] - start[0])/2, (end[1] - start[1])/2 
-        self.computeEdges()
-
-    def getCenter(self):
-        rad = self.radius
-        tl = self.topleft
-        return (tl[0] + rad, tl[1]+rad)
-    ##
-    def computeEdges(self):
-        # find the location of vertices based on center point x, y
-        r = self.radius
-        n = self.n
-        edges = self.edges
-        x, y = self.getCenter()
-
-        angle = 0
-        offset = 2*m.pi/n
-        for i in range(n):
-            edge = edges[i]
-            # start x, start y
-            sy = y + int(r*m.sin(angle))
-            sx = x + int(r*m.cos(angle))
-
-            angle += offset
-            # end x, end y
-            ey = y + int(r*m.sin(angle))
-            ex = x + int(r*m.cos(angle))
-
-            edge.change((sx, sy),(ex, ey))
-    ##
-    def displace(self, dx, dy):
-        self.topleft[0] += dx
-        self.topleft[1] += dy
-        self.computeEdges()
-    ##
-    def draw(self, sc):
-        for edge in self.edges:
-            edge.draw(sc)
-
-# helper functions
-def adjust(end_pos, start_pos):
-    if end_pos[1] < start_pos[1]:
-        if end_pos[0] < start_pos[0]:
-            start_pos, end_pos = end_pos, start_pos
-        else:
-            temp = end_pos
-            end_pos = end_pos[0], start_pos[1]
-            start_pos = start_pos[0], temp[1]
-    else:
-        if end_pos[0] < start_pos[0]:
-            temp = end_pos
-            end_pos = start_pos[0], end_pos[1]
-            start_pos = temp[0], start_pos[1]
-    return end_pos, start_pos
 
 if __name__ == '__main__':
-    conn = so.socket(so.AF_INET, so.SOCK_STREAM)
-    conn.connect(('127.0.0.1', 15112))
-
+    conn = mc.connector('localhost', 12101, 'BL2')
     sessionID = '000'
     window = CanvasWindow(sessionID, conn, None, [{'id':'akhyarkamili'}])
 

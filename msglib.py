@@ -13,7 +13,7 @@ import time
 if sys.platform in ('darwin', 'linux', 'linux2'):
     LOG_FOLDER = '~/msglogs'.replace('~/', os.environ['HOME'] + '/')    # where to store logs
 elif sys.platform == 'win32':
-    LOG_FOLDER = 'c:\\logs\\atmlog'
+    LOG_FOLDER = '\\msglog'
 else:
     raise Exception, 'Undefined platform value %s' % sys.platform
 if not os.access(LOG_FOLDER, os.F_OK):
@@ -116,6 +116,8 @@ class listener:
         self.port = port
         self.socket = None
         self.listenThread = None
+        self.lockChannels = threading.Lock()
+        self.lockLog = threading.Lock()
         self.channels = [] # members are channels from incoming connections
         self.logEncoding = None
         self.sharedLogFileName = LOG_FOLDER + os.sep + 'msg-listen-%d.log' % port
@@ -147,14 +149,18 @@ class listener:
     #-- def listen
     
     def killChannels(self):
-        for channel in self.channels:
-            channelID = channel.channelID
-            try:
-                channel.disconnect()
-            except:
-                excStr = str(sys.exc_info()[0]) + '.' + str(sys.exc_info()[1])
-                print 'Closing channel %s: %s' % (channelID, excStr)
-        self.channels = {}
+        self.lockChannels.acquire()
+        try:
+            for channel in self.channels:
+                channelID = channel.channelID
+                try:
+                    channel.disconnect()
+                except:
+                    excStr = str(sys.exc_info()[0]) + '.' + str(sys.exc_info()[1])
+                    print 'Closing channel %s: %s' % (channelID, excStr)
+            self.channels = {}
+        finally:
+            self.lockChannels.release()
     #-- def 
         
     def notifyListenThreadTermination(self, isError): # interface function required by class listenThread
@@ -163,18 +169,32 @@ class listener:
     
     def notifyChannelTermination(self, channel, isError):
         channels = self.channels
-        if channel in channels:
-            channels.remove(channel)
+        self.lockChannels.acquire()
+        try:
+            if channel in channels:
+                channels.remove(channel)
+        finally:
+            self.lockChannels.release()
         pass 
     
     def writeLog(self, sLog): # interface function required by class channel
-        self.sharedLogFile.write('%s|%s\n' % (time.asctime(), sLog))
-        self.sharedLogFile.flush()
+        self.lockLog.acquire()
+        try:
+            self.sharedLogFile.write('%s|%s\n' % (time.asctime(), sLog))
+            self.sharedLogFile.flush()
+        finally:
+            self.lockLog.release()
+        pass
     
     def sendFirst(self, msg):
-        if len(self.channels) == 0:
-            raise Exception, 'No channel is connected'
-        self.channel[0].send(msg)
+        self.lockChannels.acquire()
+        try:
+            if len(self.channels) == 0:
+                raise Exception, 'No channel is connected'
+            self.channel[0].send(msg)
+        finally:
+            self.lockChannels.release()
+        pass
         
     def stopListen(self, maxTimeOut = 10):
         if self.listenThread is None:
@@ -225,7 +245,11 @@ class listener:
         })
         aChannel.runReader()
         print 'New connection was accepted. Channel id = %s' % channel_id
-        self.channels.append(aChannel)
+        self.lockChannels.acquire()
+        try:
+            self.channels.append(aChannel)
+        finally:
+            self.lockChannels.release()
         pass
     #--
     

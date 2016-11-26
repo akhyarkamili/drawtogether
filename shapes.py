@@ -1,24 +1,15 @@
-import pygame
-import math as m
-import sys
-import time
+from helper import *
 from uuid import uuid1 as ID_GEN
+import math as m
 
 BLACK = (  0,   0,   0)
 WHITE = (255, 255, 255)
 GREY = (175, 175, 175)
 
-
 class CanvasObject(object):
     def __init__(self):
         self.id = ID_GEN()
-
-class Shape(CanvasObject):
-    def __init__(self, topleft, fillcolor, bordercolor, borderwidth):
-        self.id = ID_GEN()
-    def getRect(self):
-        return self.rect
-
+##
 class Line(CanvasObject):
     def __init__(self, start, end, color):
         super(Line, self).__init__()
@@ -40,13 +31,16 @@ class Line(CanvasObject):
         self.end = self.end[0] + disp_x, self.end[1] + disp_y
 
         self.computePoints()
-
+    ##
     def setColor(self, color):
         self.activeColor = color
-
+    ##
     def getColor(self):
         return self.activeColor
-
+    ##
+    def getEndPoints(self):
+        return self.start, self.end
+    ##
     def toggleSelected(self):
         if not self.selected:
             # temporarily turn to grey 
@@ -56,7 +50,10 @@ class Line(CanvasObject):
             self.activeColor = self.color
         # toggle selected
         self.selected = not self.selected
-
+    ##
+    def inbound(self, rect):
+        return rect.collidepoint(self.start) and rect.collidepoint(self.end)
+    ##
     def change(self, start, end):
         self.end, self.start = end, start
         self.computePoints()
@@ -120,9 +117,26 @@ class Line(CanvasObject):
     def __eq__(self, other):
         if isinstance(other, Line):
             return other.start == self.start and other.end == self.end
-
+    ##
     def __contains__(self, point):
         return point in self.points
+    ##
+##
+
+class Shape(CanvasObject):
+    def __init__(self, topleft, fillcolor, bordercolor, borderwidth):
+        pass
+    def getRect(self):
+        return self.rect
+##
+
+class Circle(Shape):
+    def __init__(self, topleft, radius):
+        pass
+    def draw(self, canvas):
+        center = topleft[0]+self.radius/2, topleft[1]+self.radius/2
+        self.image = pygame.draw.circle(surface, self.color, center, self.radius, self.borderwidth)
+##
 
 class Polygon(Shape):
     def __init__(self, topleft, radius, n, fillcolor=WHITE, bordercolor=BLACK, borderwidth=1):
@@ -146,7 +160,6 @@ class Polygon(Shape):
 
     def resize(self, start, end):
         # drag and drop resize
-        end, start = adjust(end, start)
         self.topleft = start
         self.radius = (end[0] - start[0])/2 # (end[0] - start[0])/2, (end[1] - start[1])/2 
         self.computeEdges()
@@ -183,11 +196,7 @@ class Polygon(Shape):
         self.topleft[1] += dy
         self.computeEdges()
     ##
-    def draw(self, sc):
-        for edge in self.edges:
-            edge.draw(sc)
-    ##
-    def inRect(self, p):
+    def pointInRect(self, p):
         # check if x or y is in the rough rectangle
         tl = self.topleft
         r = self.radius
@@ -197,10 +206,28 @@ class Polygon(Shape):
         if y <= tl[1] or y >= tl[1]+2*r:
             return False
         return True
+    ##
+    def inbound(self, rect):
+        '''
+        Accepts a pygame.Rect object
+        and checks whether this object
+        is contained within the rectangle
+        '''
+        print 'checking..'
+        outbound = False
+        for e in self.edges:
+            s, e = e.getEndPoints()
+            if not (rect.collidepoint(s) or rect.collidepoint(e)):
+                print 'edge: ', s, e
+                outbound = True
+        print outbound
+        return not outbound
+
     def toggleSelected(self):
         self.selected = not self.selected
         for e in self.edges:
             e.toggleSelected()
+    ##
     def __contains__(self, p):
         ''' 
         Check if a point lies inside a polygon.
@@ -211,7 +238,7 @@ class Polygon(Shape):
         tl = self.topleft
         r = self.radius
 
-        if not self.inRect(p):
+        if not self.pointInRect(p):
             return False
 
         x, y = p
@@ -224,132 +251,7 @@ class Polygon(Shape):
                     inside = not inside
         return inside
 
-
-def adjust(end_pos, start_pos):
-    if end_pos[1] < start_pos[1]:
-        if end_pos[0] < start_pos[0]:
-            start_pos, end_pos = end_pos, start_pos
-        else:
-            temp = end_pos
-            end_pos = end_pos[0], start_pos[1]
-            start_pos = start_pos[0], temp[1]
-    else:
-        if end_pos[0] < start_pos[0]:
-            temp = end_pos
-            end_pos = start_pos[0], end_pos[1]
-            start_pos = temp[0], start_pos[1]
-    return end_pos, start_pos
-
-def drawScreen(screen, screenObjects , bg):
-    screen.fill(bg)
-    for obj in screenObjects:
-        obj.draw(screen)
-
-def clearSelection(selection):
-    # clearing
-    for i in range(len(selection)):
-        selection[i].toggleSelected()
-
-def isNear(p1, p2):
-    # check if two points are near each other
-    # uses pythagorean theorem
-    dx = p2[0]-p1[0]
-    dy = p2[1]-p1[1]
-    if dx**2 + dy**2 < 8:
-        return True
-    return False
-
-def drawSelectionArea(start_pos, end_pos):
-    width = end_pos[0] - start_pos[0]
-    height = end_pos[1] - start_pos[1]
-
-    pygame.draw.line(screen, BLACK, start_pos, (start_pos[0], start_pos[1]+height))
-    pygame.draw.line(screen, BLACK, start_pos, (start_pos[0]+width, start_pos[1]))
-    pygame.draw.line(screen, BLACK, (start_pos[0]+width, start_pos[1]), 
-                                    (start_pos[0]+width, start_pos[1]+height))
-    pygame.draw.line(screen, BLACK, (start_pos[0], start_pos[1]+height), 
-                                    (start_pos[0]+width, start_pos[1]+height))
-
-if __name__ == '__main__':
-    print 'running..'
-    # init pygame
-    pygame.init()
-
-    screen_width = 700
-    screen_height = 400
-    screen = pygame.display.set_mode([screen_width, screen_height])
-    screen.fill(WHITE)
-
-    clock = pygame.time.Clock()
-    mousedown = False
-
-    pol = Polygon([100, 100], 25, 3)
-    screenObjects = [pol]
-    state = 'select'
-    activeTool = 'move'
-    selection = [pol]
-
-    # define events
-    click = pygame.USEREVENT+1
-    drag = pygame.USEREVENT+2
-    drop = pygame.USEREVENT+3
-
-    while True:
-        clock.tick(30)
-        # check for events
-        drawScreen(screen, screenObjects, WHITE)  
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                press_pos = pygame.mouse.get_pos()
-                mousedown = True
-
-            elif event.type == pygame.MOUSEBUTTONUP:
-                mousedown = False
-                if isNear(pos, press_pos):
-                    # probably a click
-                    e = pygame.event.Event(click, pos=pos)
-                    pygame.event.post(e)
-
-            elif event.type == click:
-                if state == 'select':
-                    sel = str(selection)
-                    # check if any of the object is clicked
-                    for obj in screenObjects:
-                        if not obj in selection:
-                            if pos in obj:
-                                obj.toggleSelected()
-                                selection.append(obj)
-                    if str(selection) == sel: 
-                        # clicked outside of any object
-                        # selection is cleared
-                        clearSelection(selection)
-                        selection = []
-            elif event.type == drag:
-                if state == 'select':
-                    if selection:
-                        # selection is not empty
-                        if activeTool == 'move':
-                            for obj in selection:
-                                obj.displace(*event.rel)
-                    else:
-                        # selection is empty 
-                        # do area selection
-                        drawSelectionArea(press_pos, event.pos)
-                elif state == 'draw':
-                    pass
-
-        # handle custom events
-        if mousedown:
-            pos = pygame.mouse.get_pos()
-            if not isNear(pos, press_pos):
-                # mouse is still down, 
-                # but has moved considerably
-                relative = (pos[0]-last_pos[0],pos[1]-last_pos[1])
-                e = pygame.event.Event(drag, pos=pos, rel=relative)
-                pygame.event.post(e)
-            last_pos = pos
-
-        pygame.display.flip()
+    def draw(self, sc):
+        for edge in self.edges:
+            edge.draw(sc)
+##
