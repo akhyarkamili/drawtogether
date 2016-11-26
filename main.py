@@ -12,6 +12,8 @@ class DrawingApp(object):
 		while not self.authenticate (socket, username, password):
 			username, password = self.getLogin(True)
 
+		self.startApp()
+
 	def StartConnection (self):
 		conn = so.socket(so.AF_INET, so.SOCK_STREAM)
 		conn.connect((IPADDRESS, PORTNUMBER))
@@ -51,5 +53,18 @@ class DrawingApp(object):
 	    return uname.get(), pwd.get()
 
 	def authenticate(self, socket, uname, pwd):
-		
+		user = {uname:pwd}
+		d = pickle.dumps(user)
+		msg = 'AUTH'.ljust(20) + d
+		socket.send(msg)
+
+		resp = socket.recv(20).strip()
+
+		if resp == 'SUCCESS':
+			return True
+		else:
+			return False
+	def startApp(self):
+		project = socket.recv(8192)
+		for i in 
 

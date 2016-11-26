@@ -37,13 +37,12 @@ def incomingMsgHandler(self, msg):
     pygame.event.post(myEvent)
 
 class CanvasWindow:
-    def __init__(self, sessionID, conn, project, userlist):
+    def __init__(self, conn, project, userlist):
         '''
         Accepts a session, a connection, a project string
         that will be converted to the canvas, and a 
         list of user dictionaries that is in the session.
         '''
-        self.sessionID = sessionID
         self.userID = userlist[0]['id']
         self.conn = conn
         self.userdict = self.initializeUsers(userlist)
@@ -429,6 +428,5 @@ if __name__ == '__main__':
     userlist = []
     for ID in sys.argv[1:]:
         userlist.append({'id':ID})
-    sessionID = '000'
-    window = CanvasWindow(sessionID, conn, None, userlist)
+    window = CanvasWindow(conn, None, userlist)
 
