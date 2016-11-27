@@ -25,9 +25,12 @@ class ClientChannel(msglib.channel):
         elif header == 'AUTH':
             self.authenticate(msg)
         elif header == 'RQ_UPDATE':
-            self.requestUpdate()
+            self.requestUpdate(msg)
 
     def broadcast(self, msg):
+        header = msg[:20].strip()
+        if header == 'RESP_UPDATE':
+            self.save(msg)
         for channel in self.owner.channels:
             channel.send(msg)
 
@@ -37,9 +40,6 @@ class ClientChannel(msglib.channel):
         with open('users.data', 'r') as filedata:
             users = pickle.load(filedata)
         content = pickle.loads(msg[20:]) # tuple of uname, pwd
-
-        print users, content
-
         success = content[1] == users[content[0]]
 
         if success:
@@ -49,13 +49,15 @@ class ClientChannel(msglib.channel):
             self.send('FAIL'.ljust(20))
 
     def requestUpdate(self):
-        print 'processing the request!'
         if len(self.owner.channels) == 1:
-            print 'only one channel'
+            old = pickle.load('project.data')
             self.send('RQ_UPDATE'.ljust(20)+"NONE")
         else:
-            print 'more channels available'
             self.owner.channels[0].send('BC_UPDATE'.ljust(20))
+
+    def save(self, sav):
+        pickle.dump(sav, 'project.data')
+
 
 
 class CustomListener(msglib.listener):

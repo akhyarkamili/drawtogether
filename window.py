@@ -20,6 +20,7 @@ import tools
 import shapes
 import pickle
 import random
+import ctypes
 
 BLACK = (  0,   0,   0)
 WHITE = (255, 255, 255)
@@ -67,6 +68,10 @@ class CanvasWindow:
 
         pygame.init()
         pygame.display.set_caption(self.userID)
+        # in case of full screen
+        user32 = ctypes.windll.user32
+        self.screenSize =  user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+
         self.width = 700
         self.height = 400
         self.screen = pygame.display.set_mode([self.width, self.height])
@@ -92,17 +97,20 @@ class CanvasWindow:
         clock = pygame.time.Clock()
         pygame.time.set_timer(events['update'], 500)
 
+        wheel = pygame.image.load('colorspectrum.png').convert()
+
         # Reactor loop
         while True:
             self.clock.tick(30)
             self.screen.fill(WHITE)
             self.drawScreen() 
 
+            dest = [20, 350]
+            self.screen.blit(wheel, dest)
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    self.connector.disconnect()
-                    pygame.quit()
-                    sys.exit()
+                    self.quit()
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     press_pos = pygame.mouse.get_pos()
                     mousedown = True
@@ -119,7 +127,8 @@ class CanvasWindow:
                         pygame.event.post(e)
                         mousedrag = False
                 elif event.type == pygame.KEYUP:
-                    print event.key
+                    if event.key == 27:
+                        self.quit()
                     e = pygame.event.Event(events['tool_change'], etype='tool_change', source=self.userID, key=event.key)
                     pygame.event.post(e)
                 elif event.type == events['tool_change']:
@@ -147,7 +156,6 @@ class CanvasWindow:
                 elif event.type == server:
                     # msg is a dictionary
                     head = event.message[:20].strip()
-
                     if head == 'EVENT':
                         mainmsg = pickle.loads(event.message[20:])
                         msg = mainmsg['body']
@@ -162,7 +170,6 @@ class CanvasWindow:
                         for key in msg:
                             user[key] = msg[key]
                     elif head == 'BC_UPDATE':
-                        print 'got a request!'
                         # updates all others based on the canvas
                         d = 'RESP_UPDATE'.ljust(20) + self.save()
                         self.connector.send(d)
@@ -292,28 +299,32 @@ class CanvasWindow:
         screenItems = self.screenItems 
 
         pos = event.pos
-        outside = True # measure the amount of change occured
-        # check if any of the object is clicked
-        for obj in screenItems:
-            if obj not in selection:
-                if pos in obj:
-                    # the click is in a ScreenObject
-                    self.clearSelection(user)                    
-                    outside = False
-                    if state == 'select':
-                        obj.toggleSelected(user['selectColor'])
-                        if not obj in selection:
-                            user['selection'] = helper.listPush(user['selection'], obj)
-                    break
-            else:
-                if pos in obj:
-                    outside = False
-        if outside: 
-            print event.source, "clicked outside!"
-            print "User:", event.source
-            print user
-            # clicked outside of any object
-            self.clearSelection(user)
+        if 20 < pos[0] < 680 and 330 < pos[1] < 400:
+            thiscolor = self.screen.get_at(pos)
+            if state == 'select':
+                for obj in selection:
+                    user['bordercolor'] = thiscolor
+                    obj.setColor(thiscolor)
+        else:
+            outside = True # measure the amount of change occured
+            # check if any of the object is clicked
+            for obj in screenItems:
+                if obj not in selection:
+                    if pos in obj:
+                        # the click is in a ScreenObject
+                        self.clearSelection(user)                    
+                        outside = False
+                        if state == 'select':
+                            obj.toggleSelected(user['selectColor'])
+                            if not obj in selection:
+                                user['selection'] = helper.listPush(user['selection'], obj)
+                        break
+                else:
+                    if pos in obj:
+                        outside = False
+            if outside: 
+                # clicked outside of any object
+                self.clearSelection(user)
     ##
     def dragHandler(self, event):
         print 'event coming from:', event.source
@@ -425,6 +436,12 @@ class CanvasWindow:
                 keyargs = pickle.loads(d[20:])
                 self.screenItems.append(obj_type(**keyargs))
     ##
+    def quit(self):
+        d = 'RESP_UPDATE'.ljust(20) + self.save()
+        self.connector.send(d)
+        self.connector.disconnect()
+        pygame.quit()
+        sys.exit()
 
 
 # if __name__ == '__main__':

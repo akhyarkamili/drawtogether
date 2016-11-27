@@ -327,5 +327,4 @@ class Polygon(Shape):
         d['borderwidth'] = self.borderwidth
 
         return 'POLYGON'.ljust(20) + pickle.dumps(d)
-
 ##
