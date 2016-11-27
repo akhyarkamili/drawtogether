@@ -8,11 +8,17 @@ When a project is opened, the user will be served by a canvas. To use the tools,
 List of tools | key
 
 Select (move and change color): s
+
 Draw Lines: l
+
 Draw Polygons: p
+
 Draw Free Path: f
+
 Delete Selection = delete
+
 Change number of polygon sides: 3-9
+
 Exit program: esc
 
 Dependencies: Tkinter, pygame
