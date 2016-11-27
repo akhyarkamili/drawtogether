@@ -25,18 +25,17 @@ class ClientChannel(msglib.channel):
         elif header == 'AUTH':
             self.authenticate(msg)
         elif header == 'RQ_UPDATE':
-            self.requestUpdate(msg)
+            self.requestUpdate()
 
     def broadcast(self, msg):
         header = msg[:20].strip()
         if header == 'RESP_UPDATE':
-            self.save(msg)
+            self.save(msg[20:])
         for channel in self.owner.channels:
             channel.send(msg)
 
     def authenticate(self, msg):
         global PROJECT_OPENED
-
         with open('users.data', 'r') as filedata:
             users = pickle.load(filedata)
         content = pickle.loads(msg[20:]) # tuple of uname, pwd
@@ -50,13 +49,14 @@ class ClientChannel(msglib.channel):
 
     def requestUpdate(self):
         if len(self.owner.channels) == 1:
-            old = pickle.load('project.data')
-            self.send('RQ_UPDATE'.ljust(20)+"NONE")
+            with open('project.data', 'r') as project:
+                old = pickle.load(project)
+                self.send('RQ_UPDATE'.ljust(20)+ (old or "NONE"))
         else:
             self.owner.channels[0].send('BC_UPDATE'.ljust(20))
 
     def save(self, sav):
-        pickle.dump(sav, 'project.data')
+        pickle.dump(sav, open('project.data', 'w'))
 
 
 

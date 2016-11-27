@@ -76,7 +76,7 @@ class DrawingApp(object):
     def startApp(self):        
         userdict = {}
         userdict['owner'] = self.username
-        userdict['users'] = [{'id':'saquibr'}, {'id':'akhyarkamili'}]
+        userdict['users'] = [{'id':'saquibr'}, {'id':'akhyarkamili'}, {'id':'kemalo'}, {'id':'khaledh'}]
         self.canvas = window.CanvasWindow(userdict)
 
 
