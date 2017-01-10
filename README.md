@@ -1,5 +1,7 @@
 DrawTogether is an application which lets multiple users draw on a single canvas, and stores the creation in the cloud.
 
+VIDEO DEMO: https://www.youtube.com/watch?v=6i9BFki-eYc
+
 User Interface:
 The user will be welcomed by a login screen. Once logged in, a user can engage in a canvas drawing . 
 
