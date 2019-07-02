@@ -1,19 +1,26 @@
 DrawTogether is an application which lets multiple users draw on a single canvas, and stores the creation in the cloud.
 
+VIDEO DEMO: https://www.youtube.com/watch?v=6i9BFki-eYc
+
 User Interface:
-The user will be welcomed by a login screen. Once logged in, a user can create or open an existing project. A user should also be able to share the project with other users.
+The user will be welcomed by a login screen. Once logged in, a user can engage in a canvas drawing . 
 
-When a project is opened, the user will be served by a canvas, a tools table and several menus such as: 
-  File:
-    Open
-    Import
-    Export
-    Share
-  Canvas:
-    Show Tools
-    Show Grid
-  Help
+When a project is opened, the user will be served by a canvas. To use the tools, we use the keyboard input.
 
-Libraries to be used: PIL, Tkinter, wxPython, Django/asyncio, sqlite/fileio
+List of tools | key
 
-Important side note: The project will be developed using Python 3.x
+Select (move and change color): s
+
+Draw Lines: l
+
+Draw Polygons: p
+
+Draw Free Path: f
+
+Delete Selection = delete
+
+Change number of polygon sides: 3-9
+
+Exit program: esc
+
+Dependencies: Tkinter, pygame
